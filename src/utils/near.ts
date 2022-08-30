@@ -1,0 +1,1 @@
+import type { Near, WalletConnection, Contract } from 'near-api-js'
