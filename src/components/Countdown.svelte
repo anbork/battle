@@ -32,19 +32,15 @@
 
 
 <style>
-  .container {
-    top: 20px;
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%)
-  }
   .countdown {
+    font-family: var(--bs-font-sans-serif);
     text-align: center;
     font-size: 24px;
     line-height: 21px;
     font-weight: 700;
     float: right;
     color: #f0f0f0;
+    text-decoration: none;
     padding: 10px 8px;
     border: 1px solid #fff;
     border-radius: 10px;
@@ -54,12 +50,13 @@
     min-width: 156px;
     display: block;
     transition: all 0.5s;
-    font-family: Montserrat,"Segoe UI","Helvetica Neue","Noto Sans","Liberation Sans",Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji",
+  }
+  .countdown:hover, .countdown:focus, .countdown:visited {
+    color: #f0f0f0;
+    text-decoration: none;
   }
 </style>
 
-<div class="container">
-  <div class="countdown">
-    {days}:{hours}:{minutes}:{seconds}
-  </div>  
-</div>
+<a class="countdown" href={""}>
+  {days}:{hours}:{minutes}:{seconds}
+</a>

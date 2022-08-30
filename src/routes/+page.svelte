@@ -42,7 +42,11 @@
   </div>
 
   <Loader />
-  <Countdown />
-  <Logo />
+  <div class="navbar fixed-top">
+    <div class="container">
+      <Logo />
+      <Countdown />
+    </div>
+  </div>
   <Footer />
 </div>

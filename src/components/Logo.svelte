@@ -3,13 +3,7 @@
 </script>
 
 <style>
-  .logo {
-    top: 20px;
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-  }
-  .logo a {
+  .navbar-brand a {
     color: #f0f0f0;
     padding: 10px 8px;
     border: 1px solid #fff;
@@ -21,17 +15,17 @@
     display: block;
     transition: all 0.5s;
   }
-  .logo a:hover {
+  .navbar-brand a:hover {
     color: #000;
     background-color: #fff;
   }
-  .logo svg {
+  .navbar-brand svg {
     display: block;
     margin: 0 auto;
   }
 </style>
 
-<div class="container logo">
+<div class="navbar-brand">
   <a href="/" alt="battlemon">
     <svg height={height} version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
        viewBox="0 0 146.68 26.68" style="enable-background:new 0 0 146.68 26.68;" xml:space="preserve">
