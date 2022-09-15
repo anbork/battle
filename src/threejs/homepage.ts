@@ -3,6 +3,14 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader'
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader'
+import { clientLink } from '../utils/helpers'
+import { goto } from '$app/navigation';
+
+interface Events {
+  onLoadModels: () => void, 
+  onClickHub: () => void, 
+  onClickDownloadClient: () => void
+}
 
 export class Model {
   private camera: PerspectiveCamera;
@@ -19,9 +27,11 @@ export class Model {
   private pointer: Vector2
   private pointerOver: string
   private pointerLeave: string
+  private events: Events
 
-  constructor({ dom, model, hdr }: { dom: string, model: string, hdr: string }) {
+  constructor({ dom, model, hdr, events }: { dom: string, model: string, hdr: string, events: Events }) {
     this.dom = document.getElementById(dom)!
+    this.events = events
     this.isAnimating = false;
     
     const {aspect, fov} = this.cameraParams()
@@ -37,12 +47,11 @@ export class Model {
     this.scene.translateY(-4.6)
 
     var rect = this.dom.getBoundingClientRect();
-    const onPointerMove = (event: MouseEvent) => {
+    window.addEventListener( 'pointermove', (event: MouseEvent) => {
       this.pointer.x = ( (event.clientX - rect.left) / this.dom.offsetWidth ) * 2 - 1;
       this.pointer.y = - ( (event.clientY - rect.top) / this.dom.offsetHeight ) * 2 + 1;
-    }
+    });
 
-    window.addEventListener( 'pointermove', onPointerMove );
 
     const manager = new LoadingManager();
     manager.onProgress = function (item, loaded, total) {
@@ -103,6 +112,7 @@ export class Model {
       this.scene.environment = texture;
 
       manager.onLoad = () => {
+        this.events.onLoadModels()
         this.dom.appendChild(this.renderer.domElement);
         document.getElementById('loader')!.style.opacity = '0';
         window.addEventListener("resize", this.onWindowResize.bind(this), false);
@@ -158,8 +168,6 @@ export class Model {
     } else {
       delta = 0
     }
-
-    console.log(aspect)
 
     let fov = 32;
 
@@ -260,6 +268,19 @@ export class Model {
       }
       
       this.hoverLayers(hovered);
+      if (hovered == 'download_client') {
+        document.onclick = () => {
+          this.events.onClickDownloadClient()
+          location.href = clientLink()
+        }
+      }
+      //if (hovered == 'lemterprise') document.onclick = () => goto('/lemterprise')
+      if (hovered == 'arena') {
+        document.onclick = () => {
+          this.events.onClickHub()
+          goto('/hub')
+        }
+      }
     } 
     
     

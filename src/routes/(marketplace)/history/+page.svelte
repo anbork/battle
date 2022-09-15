@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { TabContent, TabPane } from 'sveltestrap'
   import nearIcon from '../../../svg/near'
 
   interface HistoryRow {

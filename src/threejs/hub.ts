@@ -1,42 +1,72 @@
-import { TextureLoader, LoadingManager, CubeTextureLoader, sRGBEncoding, Group, DirectionalLight, PerspectiveCamera, Scene, WebGLRenderer, AnimationMixer, Clock, AnimationObjectGroup } from "three"
+import { LoadingManager, CubeTextureLoader, sRGBEncoding, DirectionalLight, PerspectiveCamera, Scene, WebGLRenderer, AnimationMixer, Clock, Raycaster, Vector2, EquirectangularReflectionMapping } from "three"
+import { LoopOnce } from 'three/src/constants.js'
+import type { AnimationAction } from 'three/src/animation/AnimationAction'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
-import type { LemonNFT } from './lemon'
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader'
+import type { LemonNFT } from '../utils/types'
+import { assetsTimestamp } from "../utils/helpers"
+import { modelUrl, wearLemonModel } from '../threejs/lemon'
+import { nftMintFull } from '../utils/near'
+import { InteractionManager } from "three.interactive";
+
+interface Animations {
+  [name: string]: AnimationAction
+}
+
+interface Events {
+  onLoadModels: () => void
+}
 
 export class Model {
-  private camera: PerspectiveCamera;
+  private camera!: PerspectiveCamera;
   private scene: Scene;
   private renderer: WebGLRenderer;
   private dom: HTMLElement
   private clock: Clock
-  private controls: OrbitControls
+  private controls!: OrbitControls
   private loader: GLTFLoader
+  private lemonModel!: GLTF
   private isAnimating: boolean
-  private mixer: AnimationMixer
-  private animatedObjects: AnimationObjectGroup
+  private raycaster: Raycaster
+  private pointer: Vector2
+  private interactionManager!: InteractionManager
+  private mixers: {
+    [name: string]: AnimationMixer
+  }
+  private animations: Animations
+  private pointerOver: string
+  private activePlatform: number
   private sceneLights: {
     [key: string]: DirectionalLight
   }
-  scale: number
+  private events: Events
   light: number
 
   /**
    * Based off the three.js docs: https://threejs.org/examples/?q=cube#webgl_geometry_cube
    */
-  constructor({ dom, translateY, cam, globalScale, lemons }: { dom: string, cam: number, translateY: number, globalScale: number, lemons: LemonNFT[] }) {
+  constructor({ dom, lemons, events }: { dom: string, lemons: LemonNFT[], events: Events }) {
     this.dom = document.getElementById(dom)!
-    this.camera = new PerspectiveCamera(cam, this.dom.offsetWidth / this.dom.offsetHeight);
     this.sceneLights = {};
     this.isAnimating = false;
     this.clock = new Clock()
     this.scene = new Scene();
-    this.scene.translateY(translateY);
-    
-    this.mixer = new AnimationMixer( this.scene )
-
-    this.scale = 0.020
-    this.light = 3.8
+    this.raycaster = new Raycaster()
+    this.pointer = new Vector2()
+    this.mixers = {}
+    this.animations = {}
+    this.light = 0.8
+    this.pointerOver = ''
+    this.activePlatform = 1
+    this.events = events
+    var rect = this.dom.getBoundingClientRect();
+    window.addEventListener( 'pointermove', (event: MouseEvent) => {
+      this.pointer.x = ( (event.clientX - rect.left) / this.dom.offsetWidth ) * 2 - 1;
+      this.pointer.y = - ( (event.clientY - rect.top) / this.dom.offsetHeight ) * 2 + 1;
+    });
 
     const manager = new LoadingManager();
     manager.onProgress = function (item, loaded, total) {
@@ -50,62 +80,27 @@ export class Model {
     dracoLoader.setDecoderPath( '/draco/' );
     this.loader.setDRACOLoader( dracoLoader );
 
-    this.animatedObjects = new AnimationObjectGroup()
-
-    this.loader.load(`/models/BTLMN_Outfits_Tier1_MP.glb?020620220003`, (gltf) => {
-      gltf.scene.name = 'lemon'
-      gltf.scene.position.setY(0)
-      gltf.scene.scale.set(0.015, 0.015, 0.015)      
-
-      // это косяки
-        // тут аутфит лежит не в папке Armature, и вообще в папке armature есть еще кости
-        const FireArms_Assault_Rifle_AA01 = gltf.scene.getObjectByName('FireArms_Assault_Rifle_AA01')
-        if (FireArms_Assault_Rifle_AA01) {
-          FireArms_Assault_Rifle_AA01.removeFromParent()
-          gltf.scene.getObjectByName('Armature')?.add(FireArms_Assault_Rifle_AA01)
-        }
-        
-        // тут неправильно указан Exo_Snowwhite
-        const Exo_Snowwhite_AA02 = gltf.scene.getObjectByName('Exo_Snowwhite_AA02')
-        if (Exo_Snowwhite_AA02) {
-          Exo_Snowwhite_AA02.name = 'Exo_Snowwhite_Exoskeleton_AA02'
-        }
-
-        // в аутфитах вообще нет головы
-        lemons.forEach(lemon => lemon.model.head = 'Head_Fresh_Lemon_AA01')
-      // !
-
-      if (!lemons?.length) return;
-      const lemon = lemons[0]
-
-      const outstaffList = Object.entries(lemon.model).map(([key, outfit]) => {
-        if (!outfit || key === "kind" || key === "cold_arm") return
-        if (typeof outfit === 'object') {
-          return outfit.flavour
-        } else if (typeof outfit === 'string') {
-          return outfit
-        }
-      }).filter(o => o)
-
-      const outstaff = gltf.scene.getObjectByName('Armature')?.children
-      outstaff?.forEach(os => {
-        if (os.type == 'Bone') return;
-        if (outstaffList.includes(os.name)) return
-        os.visible = false;
-      })
-
-      this.scene.add(gltf.scene)
-      var action = this.mixer.clipAction( gltf.animations[ 0 ] );
-      action.play();
+    this.loader.load(`${modelUrl}?${assetsTimestamp}`, (gltf) => {
+      this.lemonModel = gltf
     });
-
     
-    this.loader.load('/models/platform_big.glb?020620220003', (gltf) => {
-      if (!lemons?.length) return;
+    this.loader.load(`/models/BTLMN_LemonPlatforms.glb?${assetsTimestamp}`, (gltf) => {
       gltf.scene.name = 'postament'
       gltf.scene.position.setY(0.25)
-      gltf.scene.scale.set(0.7, 0.7, 0.7)
+      gltf.scene.scale.set(1, 1, 1)
       this.scene.add(gltf.scene)
+
+      const mixer = new AnimationMixer( gltf.scene );
+
+      ['Forward1', 'Forward2', 'Forward3', 'Backward1', 'Backward2', 'Backward3'].forEach(anim => {
+        const action = mixer.clipAction( gltf.animations.find(a => a.name == anim)! )
+        action.loop = LoopOnce
+        //action.repetitions = 1
+        action.clampWhenFinished = true
+        this.animations[anim] = action
+      })
+
+      this.mixers.platforms = mixer
     });
 
 
@@ -118,14 +113,6 @@ export class Model {
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(this.dom.offsetWidth, this.dom.offsetHeight);
 
-    this.controls = new OrbitControls(this.camera, this.dom)
-    this.camera.position.set(0, 0, 25);
-    this.controls.update();
-    this.controls.enablePan = false;
-
-    this.controls.minDistance = 25;
-    this.controls.maxDistance = 25;
-
     this.scene.background = new CubeTextureLoader()
       .setPath('/img/hub/')
       .load([
@@ -137,25 +124,174 @@ export class Model {
         'nz.png'
       ]);
 
-    this.controls.maxPolarAngle = Math.PI / 1.7;
+    new RGBELoader().load(`/models/winter_lake_01_1k.hdr?${assetsTimestamp}`, ( texture ) => {
+      texture.mapping = EquirectangularReflectionMapping;
+      //this.scene.background = texture;
+      this.scene.environment = texture;
 
-    this.scene.scale.set(globalScale, globalScale, globalScale);
-    this.sceneLights.light1 = new DirectionalLight(0xFFFFFF);
-    this.sceneLights.light2 = new DirectionalLight(0xFFFFFF);
-    this.setLightSettings()
-    this.scene.add(this.sceneLights.light1);
-    this.scene.add(this.sceneLights.light2);
+      manager.onLoad = () => {
+        this.camera = this.scene.getObjectByName("Camera1") as PerspectiveCamera
+        this.camera.aspect = this.dom.offsetWidth / this.dom.offsetHeight;
+        this.camera.updateProjectionMatrix();
+        this.controls = new OrbitControls(this.camera, this.dom)
+        this.controls.update();
+        this.controls.enablePan = false;
+        this.controls.enableRotate = false
 
-    manager.onLoad = () => {
-      this.dom.appendChild(this.renderer.domElement);
-      document.getElementById('loader')!.style.opacity = '0';
-      window.addEventListener("resize", this.onWindowResize.bind(this), false);
-      if (!this.isAnimating) {
-        this.animate();
-        this.isAnimating = true
+        this.sceneLights.light1 = new DirectionalLight(0xFFFFFF);
+        this.sceneLights.light2 = new DirectionalLight(0xFFFFFF);
+        this.setLightSettings()
+        this.scene.add(this.sceneLights.light1);
+        this.scene.add(this.sceneLights.light2);
+
+        this.setLemons(lemons)
+        this.setInteractive()
+  
+        this.dom.appendChild(this.renderer.domElement);
+        
+        this.events.onLoadModels()
+
+        window.addEventListener("resize", this.onWindowResize.bind(this), false);
+        if (!this.isAnimating) {
+          this.animate();
+          this.isAnimating = true
+        }
+      };
+
+    });
+  }
+
+  getObjects() {
+    const colliders = [
+      this.scene.getObjectByName("collider1"),
+      this.scene.getObjectByName("collider2"),
+      this.scene.getObjectByName("collider3")
+    ];
+    const platforms = [
+      this.scene.getObjectByName("LemonPos_1"),
+      this.scene.getObjectByName("LemonPos_2"),
+      this.scene.getObjectByName("LemonPos_3")
+    ];
+    const pluses = [
+      this.scene.getObjectByName("Plus_1"),
+      this.scene.getObjectByName("Plus_2"),
+      this.scene.getObjectByName("Plus_3")
+    ];
+    const pluseStrokes = [
+      this.scene.getObjectByName("Plus_1_Stroke"),
+      this.scene.getObjectByName("Plus_2_Stroke"),
+      this.scene.getObjectByName("Plus_3_Stroke")
+    ];
+
+    return {
+      colliders,
+      platforms,
+      pluses,
+      pluseStrokes
+    }
+  }
+
+  setLemons(lemons: LemonNFT[]): void {
+    const { pluseStrokes, platforms, pluses } = this.getObjects()
+    pluseStrokes.forEach(stroke => {
+      if (stroke) stroke.visible = false
+    });
+
+    [1,2,3].forEach((num, index) => {
+      let lemon = lemons[lemons.length - num]
+      if (lemon) {
+        const clonedLemon = SkeletonUtils.clone(this.lemonModel.scene) as Scene;
+        wearLemonModel(clonedLemon, lemon);
+        clonedLemon.name = `Lemon${index + 1}`
+        platforms[index]!.add(clonedLemon)
+        pluses[index]!.visible = false
+        
+        const mixer = new AnimationMixer( clonedLemon )
+        const action = mixer.clipAction( this.lemonModel.animations[ 0 ] );
+        action.play();
+        this.mixers[`lemon${index + 1}`] = mixer
+      } else {
+        const clonedLemon = this.scene.getObjectByName(`Lemon${index + 1}`)
+        if (clonedLemon) {
+          platforms[index]!.remove(clonedLemon)
+          pluses[index]!.visible = true
+          delete this.mixers[`lemon${index + 1}`]
+        }
       }
-    };
+    })
+  }
 
+  
+  setInteractive(): void { 
+    const { colliders, pluseStrokes, pluses } = this.getObjects()
+
+    this.interactionManager = new InteractionManager(
+      this.renderer,
+      this.camera,
+      this.renderer.domElement,
+      true
+    );
+
+    colliders.forEach((collider, index) => {
+      if (collider) {
+        this.interactionManager.add(collider)
+        collider.addEventListener("mouseenter", (event) => {
+          document.body.style.cursor = 'pointer';
+          if (pluseStrokes[index]) pluseStrokes[index]!.visible = true
+        })
+        collider.addEventListener("mouseleave", (event) => {
+          if (pluseStrokes[index]) pluseStrokes[index]!.visible = false
+        })
+      }
+    })
+
+    colliders[0]?.addEventListener("mousedown", (event) => {
+      if (pluses[0]?.visible) {
+        nftMintFull()
+        return
+      }
+      if (this.activePlatform == 2) {
+        this.mixers.platforms.stopAllAction()
+        this.animations['Backward3'].play()
+      }
+      if (this.activePlatform == 3) {
+        this.mixers.platforms.stopAllAction()
+        this.animations['Forward3'].play()
+      }
+      this.activePlatform = 1
+    });
+    
+    colliders[1]?.addEventListener("mousedown", (event) => {
+      if (pluses[1]?.visible) {
+        nftMintFull()
+        return
+      }
+      if (this.activePlatform == 1) {
+        this.mixers.platforms.stopAllAction()
+        this.animations['Forward1'].play()
+      }
+      if (this.activePlatform == 3) {
+        this.mixers.platforms.stopAllAction()
+        this.animations['Backward2'].play()
+      }
+      this.activePlatform = 2
+    });
+
+    colliders[2]?.addEventListener("mousedown", (event) => {
+      if (pluses[2]?.visible) {
+        nftMintFull()
+        return
+      }
+      if (this.activePlatform == 1) {
+        this.mixers.platforms.stopAllAction()
+        this.animations['Backward1'].play()
+      }
+      if (this.activePlatform == 2) {
+        this.mixers.platforms.stopAllAction()
+        this.animations['Forward2'].play()
+      }
+      this.activePlatform = 3
+    });
   }
 
   setLightSettings(): void {
@@ -163,7 +299,7 @@ export class Model {
     this.sceneLights.light1.position.set(camPos.x, camPos.y + 50, camPos.z);
     this.sceneLights.light2.position.set(camPos.x, camPos.y + -10, camPos.z);
     this.sceneLights.light1.intensity = this.light
-    this.sceneLights.light2.intensity = this.light - 1.5
+    this.sceneLights.light2.intensity = this.light
   }
 
   private onWindowResize(): void {
@@ -177,10 +313,19 @@ export class Model {
   private animate(): void {
     requestAnimationFrame(this.animate.bind(this));
     const delta = this.clock.getDelta();
-    this.mixer.update(delta)
+    Object.values(this.mixers).forEach(mixer => mixer.update(delta))
     this.controls.update();
     this.sceneLights.light1.position.set(this.camera.position.x, this.camera.position.y + 50, this.camera.position.z);
     this.sceneLights.light2.position.set(this.camera.position.x, this.camera.position.y - 10, this.camera.position.z);
+    
+    this.scene.getObjectByName("Lemon1")?.lookAt(this.camera.position)
+    this.scene.getObjectByName("Lemon2")?.lookAt(this.camera.position)
+    this.scene.getObjectByName("Lemon3")?.lookAt(this.camera.position)
+    this.scene.getObjectByName("Plus_1")?.lookAt(this.camera.position)
+    this.scene.getObjectByName("Plus_2")?.lookAt(this.camera.position)
+    this.scene.getObjectByName("Plus_3")?.lookAt(this.camera.position)
+
+    this.interactionManager.update();
     this.renderer.render(this.scene, this.camera);
   }
 }

@@ -23,7 +23,6 @@
     background-attachment: fixed;
     background-size: cover;
     color: #fff;
-    font-family: Montserrat,Helvetica Neue,Helvetica,Arial,sans-serif;
   }
   html.mountings h1, html.mountings h2 {
     font-weight: 900;

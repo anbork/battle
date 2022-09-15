@@ -1,25 +1,25 @@
-export interface LemonOutfit {
-  token_id: string,
-  flavour: string
-}
+export const modelUrl = "/models/BTLMN_Outfits_Tier1_MP.glb"
+import type { LemonNFT } from '../utils/types'
+import type { Scene } from 'three'
 
-export interface LemonModel {
-  head?: string
-  model: string
-  exo: string
-  eyes: string
-  face: string
-  teeth: string
-  fire_arm: LemonOutfit | undefined
-  cold_arm: LemonOutfit | undefined
-  cloth: LemonOutfit | undefined
-  cap: LemonOutfit | undefined
-  back: LemonOutfit | undefined
-}
+export const wearLemonModel = (scene: Scene, lemon: LemonNFT): Scene => {
 
-export interface LemonNFT {
-  model: LemonModel
-  token_id: string
-  owner_id: string
-}
+  const outstaffList = Object.entries(lemon.model).map(([key, outfit]) => {
+    if (!outfit || key === "kind" || key === "cold_arm") return
+    if (typeof outfit === 'object') {
+      return outfit.flavour
+    } else if (typeof outfit === 'string') {
+      return outfit
+    }
+  }).filter(o => o)
+  
+  const outstaff = scene.getObjectByName('Armature')?.children
 
+  outstaff?.forEach(os => {
+    if (os.type == 'Bone') return;
+    if (outstaffList.includes(os.name)) return
+    os.visible = false;
+  })
+
+  return scene;
+}

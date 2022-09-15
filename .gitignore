@@ -7,3 +7,5 @@ node_modules
 .env.*
 !.env.example
 myreadme.md
+.vercel_build_output
+.vercel

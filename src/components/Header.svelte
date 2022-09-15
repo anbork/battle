@@ -1,14 +1,7 @@
-<script>
-  import { onMount } from 'svelte'
+<script lang="ts">
   import Logo from './Logo.svelte'
   import { page } from '$app/stores';
-  import { initializeBackend, signIn, wallet } from '../utils/near'
-
-  let accountId = wallet.getAccountId()
-
-  onMount(async () => {
-    initializeBackend()
-  })  
+  import { signIn, signOut, near } from '../utils/near'
 </script>
 
 <style>
@@ -38,15 +31,15 @@
       <ul class="navbar-nav mb-2 mb-lg-0 fs-5">
         
         <li class="nav-item dropdown">
-          {#if accountId}
+          {#if $near.accountId}
             <button class="btn btn-lg btn-outline-light dropdown-toggle" id="navbarDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-              {accountId}
+              {$near.accountId}
             </button>
             <ul class="dropdown-menu w-100" aria-labelledby="navbarDropdown">
-              <li><a class="dropdown-item" href={"#"} on:click|preventDefault={() => {wallet.signOut(); accountId = null}}>Sign Out</a></li>
+              <li><a class="dropdown-item" href={"#"} on:click|preventDefault={signOut}>Sign Out</a></li>
             </ul>
           {:else}
-            <button class="btn btn-lg btn-outline-light" on:click={() => signIn()}>
+            <button class="btn btn-lg btn-outline-light" on:click={signIn}>
               Sign In
             </button>
           {/if}
